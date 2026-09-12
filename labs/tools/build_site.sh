@@ -32,7 +32,7 @@ if ! command -v quarto >/dev/null 2>&1; then
 fi
 
 python3 -m build --wheel "${MLSYSIM_DIR}"
-python3 -m build --wheel "${LABS_DIR}" --outdir "${REPO_ROOT}/wheels"
+python3 -m build --wheel "${LABS_DIR}" --outdir "${LABS_DIR}/wheels"
 
 # Verify the built wheel version matches what labs reference via micropip.
 # A mismatch causes BadZipFile in the browser (micropip fetches a 404 HTML page).
@@ -50,8 +50,8 @@ if [ ! -f "${BUILT_WHL}" ]; then
   echo "ERROR: Expected wheel not found after build: ${BUILT_WHL}" >&2
   exit 1
 fi
-mkdir -p "${REPO_ROOT}/wheels"
-cp "${BUILT_WHL}" "${REPO_ROOT}/wheels/"
+mkdir -p "${LABS_DIR}/wheels"
+cp "${BUILT_WHL}" "${LABS_DIR}/wheels/"
 
 # Confirm every lab references the built wheel version.
 BAD_LABS=""
@@ -79,7 +79,7 @@ except ImportError:
 p = pathlib.Path('${LABS_DIR}/pyproject.toml')
 print(tomllib.loads(p.read_text())['project']['version'])
 ")
-LAB_HELPER_WHL="${REPO_ROOT}/wheels/mlsysbook_labs-${LAB_HELPER_VERSION}-py3-none-any.whl"
+LAB_HELPER_WHL="${LABS_DIR}/wheels/mlsysbook_labs-${LAB_HELPER_VERSION}-py3-none-any.whl"
 if [ ! -f "${LAB_HELPER_WHL}" ]; then
   echo "ERROR: Expected lab helper wheel not found after build: ${LAB_HELPER_WHL}" >&2
   exit 1
@@ -103,7 +103,7 @@ echo "Lab helper wheel version check passed: ${LAB_HELPER_VERSION}"
 rm -rf "${LABS_DIR}/_wasm_build" "${LABS_DIR}/_build"
 mkdir -p "${LABS_DIR}/_wasm_build/wheels"
 cp "${MLSYSIM_DIR}"/dist/mlsysim-*.whl "${LABS_DIR}/_wasm_build/wheels/"
-cp "${REPO_ROOT}"/wheels/mlsysbook_labs-*.whl "${LABS_DIR}/_wasm_build/wheels/"
+cp "${LABS_DIR}"/wheels/mlsysbook_labs-*.whl "${LABS_DIR}/_wasm_build/wheels/"
 
 expected=0
 exported=0
@@ -134,8 +134,10 @@ fi
 
 (cd "${LABS_DIR}" && quarto render && touch _build/.nojekyll)
 
-cp -r "${LABS_DIR}/_wasm_build/vol1" "${LABS_DIR}/_build/vol1"
-cp -r "${LABS_DIR}/_wasm_build/vol2" "${LABS_DIR}/_build/vol2"
+rm -rf "${LABS_DIR}/_build/vol1" "${LABS_DIR}/_build/vol2"
+mkdir -p "${LABS_DIR}/_build/vol1" "${LABS_DIR}/_build/vol2"
+cp -R "${LABS_DIR}/_wasm_build/vol1/." "${LABS_DIR}/_build/vol1/"
+cp -R "${LABS_DIR}/_wasm_build/vol2/." "${LABS_DIR}/_build/vol2/"
 cp -r "${LABS_DIR}/_wasm_build/wheels" "${LABS_DIR}/_build/wheels"
 # Duplicate wheels into vol directories to satisfy Pyodide worker relative paths
 cp -r "${LABS_DIR}/_wasm_build/wheels" "${LABS_DIR}/_build/vol1/wheels"
@@ -185,6 +187,21 @@ wasm_count="$(find "${LABS_DIR}/_build/vol1" "${LABS_DIR}/_build/vol2" -name "in
 echo "WASM notebooks in final build: ${wasm_count}"
 if [ "${wasm_count}" -ne "${expected}" ]; then
   echo "ERROR: Expected ${expected} WASM notebooks in build output, got ${wasm_count}" >&2
+  exit 1
+fi
+
+missing_routes=""
+for vol in vol1 vol2; do
+  for lab in "${LABS_DIR}/${vol}"/lab_*.py; do
+    name="$(basename "${lab}" .py)"
+    route="${LABS_DIR}/_build/${vol}/${name}/index.html"
+    if [ ! -f "${route}" ]; then
+      missing_routes="${missing_routes} ${vol}/${name}"
+    fi
+  done
+done
+if [ -n "${missing_routes}" ]; then
+  echo "ERROR: Missing direct WASM routes in build output:${missing_routes}" >&2
   exit 1
 fi
 

@@ -14,7 +14,7 @@ name: '🔧 Infra · 🐳 Container (Linux)'
 #   4. SUMMARY      — Report build status, image digest, and cache hit
 #
 # Triggers:
-#   - push (dev): Changes to book/tools/dependencies/ or book/docker/linux/
+#   - push (dev): Changes to binder/tools/dependencies/ or binder/docker/linux/
 #   - schedule: Weekly rebuild (Sunday midnight UTC)
 #   - workflow_dispatch: Manual with force_rebuild, no_cache options
 #   - workflow_call: Reusable by other workflows
@@ -111,17 +111,17 @@ on:
   push:
     branches: [dev]  # Only trigger on dev branch, not main
     paths:
-      - 'book/tools/dependencies/**'
-      - 'book/docker/linux/**'
-      - '.github/workflows/book-build-linux-container.yml'
+      - 'binder/tools/dependencies/**'
+      - 'binder/docker/linux/**'
+      - '.github/workflows/infra-container-linux.yml'
 
 env:
   # =============================================================================
-  # PATH CONFIGURATION - Uses GitHub Repository Variables (Settings > Variables)
+  # PATHS
   # =============================================================================
-  # MLSysBook content lives under book/ to accommodate TinyTorch at root
-  # Use ${{ vars.BOOK_ROOT }}, ${{ vars.BOOK_DOCKER }}, etc. in workflow steps
-  # Variables: BOOK_ROOT, BOOK_DOCKER, BOOK_TOOLS, BOOK_QUARTO, BOOK_DEPS
+  # Directory paths are written literally (books/, binder/, packages/, ...).
+  # Repository variables are shared by every branch while the layout is
+  # versioned per branch, and fork pull requests receive no variables at all.
 
   # Container Registry Configuration (configurable via inputs)
   REGISTRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.container_registry) || 'ghcr.io' }}
@@ -130,8 +130,7 @@ env:
 
   # Container Build Configuration
   PLATFORM: linux/amd64
-  # Using vars.BOOK_DOCKER (repository variable) - works in all contexts
-  DOCKERFILE_PATH: ./${{ vars.BOOK_DOCKER }}/linux/Dockerfile
+  DOCKERFILE_PATH: ./binder/docker/linux/Dockerfile
   CONTEXT_PATH: .
 
 jobs:
@@ -144,29 +143,30 @@ jobs:
       - name: 🔎 Probe required URLs and TL mirror pool
         env:
           QUARTO_VERSION: '1.9.27'
+          TEXLIVE_REPOSITORY_URL: 'https://mirrors.mit.edu/CTAN/systems/texlive/tlnet'
         run: |
           set -uo pipefail
 
           # Required URLs — every one must return 200. These are the choke points
-          # the container build hits before TeX Live; a dead one wastes 30+ min
-          # on a runner before failing inside docker build.
+          # the container build hits before installing TeX Live; a dead one wastes
+          # 30+ min on a runner before failing inside docker build.
           required=(
             "https://ppa.launchpadcontent.net/inkscape.dev/stable/ubuntu/dists/jammy/Release"
             "https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc"
             "https://cloud.r-project.org/bin/linux/ubuntu/jammy-cran40/InRelease"
             "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.deb"
-            "https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2025/tlnet-final/tlpkg/texlive.tlpdb"
+            "${TEXLIVE_REPOSITORY_URL}/tlpkg/texlive.tlpdb"
           )
 
           # TeX Live install-tl mirror pool — install-texlive-base.sh tries each
           # in order and falls through on failure, so this is resilience not a
           # hard gate. Require ≥3 of 5 alive.
           mirrors=(
-            "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"
             "https://mirrors.mit.edu/CTAN/systems/texlive/tlnet/install-tl-unx.tar.gz"
             "https://ctan.math.washington.edu/tex-archive/systems/texlive/tlnet/install-tl-unx.tar.gz"
             "https://mirrors.rit.edu/CTAN/systems/texlive/tlnet/install-tl-unx.tar.gz"
             "https://mirror.las.iastate.edu/tex-archive/systems/texlive/tlnet/install-tl-unx.tar.gz"
+            "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"
           )
 
           probe() {

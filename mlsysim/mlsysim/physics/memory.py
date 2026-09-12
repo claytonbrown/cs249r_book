@@ -6,7 +6,7 @@ import math
 import pint
 
 from mlsysim.core.units import ureg, MB
-from mlsysim.core._validation import validate_at_least
+from mlsysim.core._validation import validate_at_least, validate_nonnegative
 
 from ._units import _ensure_unit
 
@@ -201,6 +201,11 @@ def calc_kv_cache_size(
     Quantity
         Total KV cache size in bytes.
     """
+    validate_at_least(n_layers, 1, "n_layers")
+    validate_at_least(n_heads, 1, "n_heads")
+    validate_at_least(head_dim, 1, "head_dim")
+    validate_nonnegative(seq_len, "seq_len")
+    validate_at_least(batch_size, 1, "batch_size")
     effective_bpe = kv_precision_bytes if kv_precision_bytes is not None else bytes_per_elem
     bpe = _ensure_unit(
         effective_bpe,
@@ -209,6 +214,62 @@ def calc_kv_cache_size(
     )
     # Leading 2 = the separate K and V tensors cached per layer per head.
     return (2 * n_layers * n_heads * head_dim * seq_len * batch_size * bpe).to(ureg.byte)
+
+
+def calc_mla_cache_size(
+    n_layers,
+    kv_lora_rank,
+    qk_rope_head_dim,
+    seq_len,
+    batch_size,
+    bytes_per_elem=2,
+):
+    """
+    Calculates the cache size for Multi-Head Latent Attention (MLA).
+
+    MLA compresses keys and values into a single low-rank latent vector per
+    token per layer, and carries a decoupled rotary position key alongside it.
+    Only those two are resident, so the cache is:
+
+        n_layers * (kv_lora_rank + qk_rope_head_dim) * S * B * precision
+
+    There is no leading factor of two: unlike standard attention, MLA does not
+    keep a separate K and V tensor per key-value head. That absence is the whole
+    point of the scheme, and it is why an MLA model's resident cache is an order
+    of magnitude smaller than a grouped-query model of comparable depth.
+
+    Source: DeepSeek-AI, "DeepSeek-V2/V3 Technical Report" (Multi-Head Latent
+    Attention), where the compressed latent has dimension ``kv_lora_rank`` and
+    the decoupled rotary key has dimension ``qk_rope_head_dim``.
+
+    Parameters
+    ----------
+    n_layers : int
+        Number of transformer layers.
+    kv_lora_rank : int
+        Dimension of the compressed key-value latent held per token per layer.
+    qk_rope_head_dim : int
+        Dimension of the decoupled rotary position key held alongside it.
+    seq_len : int
+        Total sequence length (context + generated tokens).
+    batch_size : int
+        Number of parallel requests.
+    bytes_per_elem : Quantity or int, optional
+        Numerical precision of the cache (defaults to 2 for FP16/BF16).
+
+    Returns
+    -------
+    Quantity
+        Total latent cache size in bytes.
+    """
+    validate_at_least(n_layers, 1, "n_layers")
+    validate_at_least(kv_lora_rank, 1, "kv_lora_rank")
+    validate_at_least(qk_rope_head_dim, 1, "qk_rope_head_dim")
+    validate_nonnegative(seq_len, "seq_len")
+    validate_at_least(batch_size, 1, "batch_size")
+    bpe = _ensure_unit(bytes_per_elem, ureg.byte, "bytes_per_elem")
+    latent_dim = kv_lora_rank + qk_rope_head_dim
+    return (n_layers * latent_dim * seq_len * batch_size * bpe).to(ureg.byte)
 
 
 def calc_paged_kv_cache_size(
@@ -251,6 +312,12 @@ def calc_paged_kv_cache_size(
         - size (Quantity): Total allocated KV cache size in bytes.
         - frag_pct (float): Internal memory fragmentation (0.0 to 1.0).
     """
+    validate_at_least(n_layers, 1, "n_layers")
+    validate_at_least(n_heads, 1, "n_heads")
+    validate_at_least(head_dim, 1, "head_dim")
+    validate_nonnegative(seq_len, "seq_len")
+    validate_at_least(batch_size, 1, "batch_size")
+    validate_at_least(page_size_tokens, 1, "page_size_tokens")
     bpe = _ensure_unit(bytes_per_elem, ureg.byte, "bytes_per_elem")
     # Allocation is page-granular: round the sequence up to whole pages. The
     # slack in the final partially-filled page is the only waste PagedAttention

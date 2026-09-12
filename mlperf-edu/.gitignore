@@ -107,10 +107,19 @@ __pycache__/
 
 # Submissions (generated)
 submissions/
-paper/paper.pdf
+paper/*.pdf
+paper/output/
+paper/build/
 
-# Iteration scaffolding
-.iteration_log/
+# Paper figures are build inputs: the paper must compile from a clean clone
+# without first running tools/generate_paper_figures.py.
+!paper/figures/*.pdf
 
-# iter-5+ roofline sidecar measurements (regenerated per-machine)
-roofline/
+# Quarto website build artifacts
+site/_build/
+site/_build_report/
+site/.quarto/
+.quarto/
+
+# Generated run reports (report_generator.py output)
+reports/

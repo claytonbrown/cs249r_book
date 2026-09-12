@@ -28,6 +28,9 @@ from rich import box
 
 from ..base import BaseCommand
 
+# Per-milestone cap for the user journey (see the milestone checkpoint loop).
+MILESTONE_TIMEOUT_S = 900
+
 
 @dataclass
 class TestResult:
@@ -352,6 +355,8 @@ class DevTestCommand(BaseCommand):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1
                 )
 
@@ -370,6 +375,8 @@ class DevTestCommand(BaseCommand):
                     cwd=project_root,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=600  # 10 minutes for full build
                 )
                 returncode = result.returncode
@@ -464,6 +471,8 @@ class DevTestCommand(BaseCommand):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1
                 )
 
@@ -551,6 +560,8 @@ class DevTestCommand(BaseCommand):
                     env=env,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=timeout
                 )
 
@@ -658,6 +669,8 @@ class DevTestCommand(BaseCommand):
                      "dev", "export", module_num],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=project_root,
                     timeout=120  # 2 min for export
                 )
@@ -690,6 +703,8 @@ class DevTestCommand(BaseCommand):
                      "module", "complete", module_num],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=project_root,
                     timeout=300  # 5 min per module
                 )
@@ -917,6 +932,8 @@ class DevTestCommand(BaseCommand):
                      "module", "start", module_num, "--no-jupyter"],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=project_root,
                     timeout=120
                 )
@@ -951,6 +968,8 @@ class DevTestCommand(BaseCommand):
                      "module", "complete", module_num],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=project_root,
                     timeout=300
                 )
@@ -1007,8 +1026,14 @@ class DevTestCommand(BaseCommand):
                              "milestone", "run", milestone_id, "--skip-checks"],
                             capture_output=True,
                             text=True,
+                            encoding="utf-8",
+                            errors="replace",
                             cwd=project_root,
-                            timeout=300  # 5 min for heavy milestones (CNN, Transformer)
+                            # 2026-09-12: the CNN milestone trains 50 epochs in
+                            # NumPy; it takes ~130 s on a laptop and passed 300 s
+                            # on the hosted CI runner, so the old cap failed a
+                            # correct journey. The job itself is capped at 45 min.
+                            timeout=MILESTONE_TIMEOUT_S,
                         )
                         milestone_duration = time.time() - milestone_start
                         if result.returncode == 0:
@@ -1022,7 +1047,7 @@ class DevTestCommand(BaseCommand):
                     except subprocess.TimeoutExpired:
                         failed_milestones.append(milestone_id)
                         if ci_mode:
-                            print("✗ TIMEOUT (>180s)")
+                            print(f"✗ TIMEOUT (>{MILESTONE_TIMEOUT_S}s)")
                     except Exception as e:
                         failed_milestones.append(milestone_id)
                         if ci_mode:

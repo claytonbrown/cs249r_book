@@ -8,7 +8,7 @@ Scope on purpose:
     reachability is Lychee's job in CI; doing it here would make
     pre-commit slow and network-flaky.
 
-Why a separate tool from `book/binder`:
+Why a separate tool from `binder`:
   - The book toolchain owns Quarto cross-references (`@fig-foo`,
     `@sec-bar`), bibliography keys, label hygiene, etc.
   - This tool owns plain Markdown link integrity and works repo-wide
@@ -29,6 +29,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import re
 import subprocess
@@ -460,8 +461,6 @@ def main(argv: list[str]) -> int:
         files = discover_files(root)
 
     if args.exclude:
-        import fnmatch
-
         kept = []
         for f in files:
             try:

@@ -32,7 +32,7 @@
 
 <p align="center">
   <b><a href="https://mlsysbook.ai/vol1/">📘 Volume I</a></b> •
-  <b><a href="https://mlsysbook.ai/vol2/">📙 Volume II <i>(Summer 2026)</i></a></b> •
+  <b><a href="https://mlsysbook.ai/vol2/">📙 Volume II <i>(Summer 2027)</i></a></b> •
   <b><a href="https://mlsysbook.ai/tinytorch/">🔥 TinyTorch</a></b> •
   <b><a href="https://mlsysbook.ai/mlsysim/">🔮 MLSys·im</a></b> •
   <b><a href="https://mlsysbook.org">🌐 생태계</a></b>
@@ -133,7 +133,7 @@
 
 |   | Component | What You Do | Link |
 |---|-----------|-------------|------|
-| **READ** | [📖 텍스트북](https://mlsysbook.ai) | ML 시스템 개념 이해 | [book/](../book/README.md) |
+| **READ** | [📖 텍스트북](https://mlsysbook.ai) | ML 시스템 개념 이해 | [books/](../books/) |
 | **EXPLORE** | 🔮 Software Co‑Labs | 레이턴시·메모리·에너지·비용 실험 | *Coming 2026* |
 | **BUILD** | [🔥 TinyTorch](https://mlsysbook.ai/tinytorch) | 프레임워크 구현을 직접 경험 | [tinytorch/](../tinytorch/README.md) |
 | **DEPLOY** | [🔧 Hardware Kits](https://mlsysbook.ai/kits) | 메모리·전력·시간·안전 제약 하드웨어 엔지니어링 | [kits/](../kits/README.md) |
@@ -211,7 +211,13 @@ AI는 번개처럼 빠르게 변하지만, 이를 작동하게 하는 엔지니�
 
 [![Stars](https://img.shields.io/github/stars/harvard-edge/cs249r_book?style=for-the-badge&logo=github&color=gold)](https://github.com/harvard-edge/cs249r_book/stargazers)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=harvard-edge/cs249r_book&type=Date)](https://star-history.com/#harvard-edge/cs249r_book&Date)
+<a href="https://star-history.com/#harvard-edge/cs249r_book&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=harvard-edge/cs249r_book&type=date&legend=top-left&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=harvard-edge/cs249r_book&type=date&legend=top-left">
+    <img src="https://api.star-history.com/chart?repos=harvard-edge/cs249r_book&type=date&legend=top-left" alt="Star History Chart">
+  </picture>
+</a>
 
 1 학습자 → 10 학습자 → 100 학습자 → 1,000 학습자 → **10,000 학습자** → 100,000 학습자 → **1M 학습자**
 
@@ -255,7 +261,7 @@ All contributions go to [Open Collective](https://opencollective.com/mlsysbook),
 
 | I want to… | Go here |
 |--------------|---------|
-| 오타 수정·챕터 개선 | [book/docs/CONTRIBUTING.md](../book/docs/CONTRIBUTING.md) |
+| 오타 수정·챕터 개선 | [binder/docs/CONTRIBUTING.md](../binder/docs/CONTRIBUTING.md) |
 | TinyTorch 모듈 추가·버그 수정 | [tinytorch/CONTRIBUTING.md](../tinytorch/CONTRIBUTING.md) |
 | 하드웨어 실험 개선 | [kits/README.md](../kits/README.md) |
 | 이슈 보고 | [GitHub Issues](https://github.com/harvard-edge/cs249r_book/issues) |

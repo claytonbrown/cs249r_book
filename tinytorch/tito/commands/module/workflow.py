@@ -24,7 +24,7 @@ from .reset import ModuleResetCommand
 from .test import ModuleTestCommand
 from ...core.exceptions import ModuleNotFoundError
 from ...core import auth
-from ...core.submission import SubmissionHandler
+from ...core.submission import SubmissionHandler, auto_sync_after_completion
 from ...core.modules import (
     get_module_mapping,
     get_module_name,
@@ -265,11 +265,19 @@ class ModuleWorkflowCommand(BaseCommand):
         module_name = module_mapping[normalized]
         module_num = int(normalized)
 
-        # Check if already started
+        # Check if already started. Tracking (started_modules) and the
+        # notebook on disk can desync, e.g. `tito system reset
+        # --keep-progress` clears modules/ but intentionally preserves
+        # started_modules/completed_modules. If that's happened, don't
+        # dead-end the student on "already started"; fall through to the
+        # recreate-from-src/ logic below instead.
         if self.is_module_started(normalized):
-            self.console.print(f"[yellow]⚠️  Module {normalized} already started[/yellow]")
-            self.console.print(f"💡 Did you mean: [bold cyan]tito module resume {normalized}[/bold cyan]")
-            return 1
+            if (self.config.project_root / "modules" / module_name).exists():
+                self.console.print(f"[yellow]⚠️  Module {normalized} already started[/yellow]")
+                self.console.print(f"💡 Did you mean: [bold cyan]tito module resume {normalized}[/bold cyan]")
+                return 1
+            self.console.print(f"[yellow]⚠️  Module {normalized} was started before, but its notebook is missing[/yellow]")
+            self.console.print(f"[cyan]🔁 Recreating it from source...[/cyan]")
 
         # Check prerequisites - all previous modules must be completed
         progress = self.get_progress_data()
@@ -323,9 +331,15 @@ class ModuleWorkflowCommand(BaseCommand):
                 return 1
 
         # Prerequisites met! Check if module needs to be created from src/
-        # Notebooks are in modules/ directory, not src/ (which is modules_dir in config)
+        # Notebooks are in modules/ directory, not src/ (which is modules_dir in config).
+        # Check for the notebook file itself, not just the directory: a directory
+        # can exist but be empty if a previous conversion attempt failed partway
+        # (e.g. jupytext wasn't on PATH yet), and directory-existence alone would
+        # then make this look already done, silently skipping regeneration.
         module_dir = self.config.project_root / "modules" / module_name
-        if not module_dir.exists():
+        short_name = module_name.split("_", 1)[1] if "_" in module_name else module_name
+        notebook_file = module_dir / f"{short_name}.ipynb"
+        if not notebook_file.exists():
             # Create module from src/ using export
             src_dir = self.config.project_root / "src" / module_name
             if not src_dir.exists():
@@ -407,10 +421,15 @@ class ModuleWorkflowCommand(BaseCommand):
             return 1
 
         module_name = module_mapping[normalized]
-        # Notebooks are in modules/ directory, not src/ (which is modules_dir in config)
+        # Notebooks are in modules/ directory, not src/ (which is modules_dir in config).
+        # Check for the notebook file itself, not just the directory: see the
+        # matching comment in start_module for why directory-existence alone is
+        # not a reliable signal that a notebook actually exists.
         module_dir = self.config.project_root / "modules" / module_name
+        short_name = module_name.split("_", 1)[1] if "_" in module_name else module_name
+        notebook_file = module_dir / f"{short_name}.ipynb"
 
-        if not module_dir.exists():
+        if not notebook_file.exists():
             self.console.print(f"[yellow]⚠️  Module {normalized} not started yet[/yellow]")
             self.console.print(f"💡 Run: [bold cyan]tito module start {normalized}[/bold cyan]")
             return 1
@@ -492,6 +511,21 @@ class ModuleWorkflowCommand(BaseCommand):
             self.console.print(f"💡 Start with: [bold cyan]tito module start {normalized}[/bold cyan]")
             return 1
 
+        # Tracking says started, but the notebook itself may be missing,
+        # e.g. `tito system reset --keep-progress` clears modules/ while
+        # intentionally preserving started_modules/completed_modules.
+        # Recreate it from src/ instead of dead-ending inside _open_jupyter
+        # with "directory not found" and no way forward.
+        module_dir = self.config.project_root / "modules" / module_name
+        if not module_dir.exists():
+            self.console.print(f"[yellow]⚠️  Module {normalized} was started before, but its notebook is missing[/yellow]")
+            self.console.print(f"[cyan]🔁 Recreating it from source...[/cyan]")
+            if not self._create_module_from_src(module_name):
+                self.console.print(f"[red]❌ Could not recreate module {module_name}[/red]")
+                self.console.print(f"💡 Try: [bold cyan]tito module reset {normalized} --force[/bold cyan]")
+                return 1
+            self.console.print(f"[green]✅ Module {normalized} ready![/green]")
+
         # Update last worked
         self.update_last_worked(normalized)
 
@@ -500,6 +534,107 @@ class ModuleWorkflowCommand(BaseCommand):
         self.console.print(f"   [bold cyan]tito module complete {normalized}[/bold cyan]")
 
         return self._open_jupyter(module_name)
+
+    def _jupyter_pid_file(self) -> Path:
+        return self.config.project_root / ".tito" / "jupyter.pid"
+
+    def _running_jupyter_pid(self) -> Optional[int]:
+        """Return the PID of a tito-launched Jupyter Lab server still running, if any."""
+        pid_file = self._jupyter_pid_file()
+        if not pid_file.exists():
+            return None
+        try:
+            pid = int(pid_file.read_text().strip())
+        except (ValueError, OSError):
+            return None
+
+        if not self._pid_is_running_jupyter(pid):
+            # The server is gone. Drop the file so later runs do not keep
+            # re-probing a dead or recycled PID.
+            try:
+                pid_file.unlink()
+            except OSError:
+                pass
+            return None
+        return pid
+
+    @staticmethod
+    def _pid_is_running_jupyter(pid: int) -> bool:
+        """Check whether a PID is alive and looks like a Jupyter process.
+
+        Uses only the standard library (no psutil -- it isn't a project
+        dependency in pyproject.toml/requirements.txt). Windows needs its own
+        path: os.kill(pid, 0) does not implement POSIX signal-0 "probe only"
+        semantics there -- it calls TerminateProcess for any signal value, so
+        using it to "check" liveness would actually kill the process. Query
+        the process via the Win32 API instead, which never touches it.
+        """
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            kernel32 = ctypes.windll.kernel32
+
+            # HANDLE is pointer-width (64-bit on Win64). Without an explicit
+            # restype, ctypes defaults OpenProcess's return to a 32-bit
+            # signed int and truncates it -- harmless for the small handle
+            # values Windows actually hands out, but not correct per the
+            # Win32 API contract. Declare the real signatures instead of
+            # relying on that truncation happening to be safe.
+            kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.QueryFullProcessImageNameW.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)
+            ]
+            kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle.restype = wintypes.BOOL
+
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                return False
+            try:
+                buf = ctypes.create_unicode_buffer(260)
+                size = wintypes.DWORD(260)
+                if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                    return False
+                return "jupyter" in buf.value.lower()
+            finally:
+                kernel32.CloseHandle(handle)
+
+        # POSIX: signal 0 really is just a liveness probe, no signal is sent.
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+
+        # Confirm it is actually still Jupyter, because PIDs get recycled and
+        # the pid file outlives the server it names. /proc is Linux-only, so
+        # fall back to ps, which macOS and the BSDs do provide. Treating "alive"
+        # alone as "is Jupyter" made any live process of the user's own answer
+        # yes on macOS, which permanently blocked launching a new server.
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmdline = f.read().replace(b"\x00", b" ").decode(errors="replace").lower()
+            return "jupyter" in cmdline
+        except OSError:
+            pass
+
+        try:
+            probe = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # Cannot tell. Say no: the cost is one extra Jupyter process, the
+            # cost of a wrong yes is the student never getting a server at all.
+            return False
+
+        if probe.returncode != 0:
+            return False
+        return "jupyter" in probe.stdout.lower()
 
     def _open_jupyter(self, module_name: str) -> int:
         """Open Jupyter Lab for a module."""
@@ -524,6 +659,20 @@ class ModuleWorkflowCommand(BaseCommand):
                 else:
                     notebook_path = None
 
+            # If a tito-launched Jupyter Lab server is already running, reuse it
+            # instead of spawning another one. Without this, every tito module
+            # start/resume/view call launches its own untracked jupyter lab
+            # process that nothing ever stops, and they accumulate for the rest
+            # of the session.
+            existing_pid = self._running_jupyter_pid()
+            if existing_pid is not None:
+                self.console.print(f"\n[cyan]Jupyter Lab is already running (pid {existing_pid}).[/cyan]")
+                self.console.print("  Open [cyan]http://localhost:8888[/cyan] in your browser")
+                if notebook_path:
+                    self.console.print(f"  [dim]then open {notebook_path.name}[/dim]")
+                self.console.print("  [dim]Stop that server first if you want a fresh one.[/dim]")
+                return 0
+
             self.console.print(f"\n[cyan]🚀 Opening Jupyter Lab for module {module_name}...[/cyan]")
 
             # Launch Jupyter Lab with the notebook file directly
@@ -536,8 +685,14 @@ class ModuleWorkflowCommand(BaseCommand):
                 cwd=str(module_dir),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace"
             )
+
+            pid_file = self._jupyter_pid_file()
+            pid_file.parent.mkdir(parents=True, exist_ok=True)
+            pid_file.write_text(str(process.pid))
 
             # Give Jupyter a moment to start and capture the URL
             time.sleep(2)
@@ -625,6 +780,17 @@ class ModuleWorkflowCommand(BaseCommand):
                 return 1
 
             self.console.print(f"   ✅ Unit tests: {unit_result['passed']}/{unit_result['passed']} passed")
+
+        # Step 1.5: Catch notebook syntax errors before export. Unit tests run
+        # against the instructor src/ file, so a SyntaxError in the student
+        # notebook would otherwise slip through to a silent, broken export.
+        if not skip_export:
+            syntax_check = self._check_notebook_syntax(module_name)
+            if not syntax_check['ok']:
+                self.console.print()
+                self.console.print(f"[red]   ❌ {syntax_check['error']}[/red]")
+                self.console.print("   💡 Fix the syntax error in your notebook and try again")
+                return 1
 
         # Step 2: Export to package (BEFORE integration tests, since they need the export)
         if not skip_export:
@@ -820,6 +986,13 @@ class ModuleWorkflowCommand(BaseCommand):
             if unit_result['failed'] > 0:
                 return 1
 
+        # Catch notebook syntax errors before export (see complete_module Step 1.5)
+        if not skip_export:
+            syntax_check = self._check_notebook_syntax(module_name)
+            if not syntax_check['ok']:
+                self.console.print(f"[red]❌ {syntax_check['error']}[/red]")
+                return 1
+
         # Export to package
         if not skip_export:
             export_result = self.export_module(module_name)
@@ -839,35 +1012,27 @@ class ModuleWorkflowCommand(BaseCommand):
         return 0
 
     def _trigger_submission(self):
-        """Asks the user to submit their progress if they are logged in.
+        """Offer to sync progress after a module completes.
 
-        In CI mode (non-interactive), skips the prompt entirely.
+        Delegates the whole "should we sync, and should we prompt" decision to
+        the shared :func:`auto_sync_after_completion` helper so module, milestone,
+        and login paths stay consistent. In particular, this no longer skips the
+        sync on a non-TTY shell (Git Bash / IDE terminals) -- that silent skip
+        was the cause of dashboards never updating (#1849).
         """
-        # Skip interactive prompts in CI/non-interactive mode
-        # Check for common CI environment indicators
-        if os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS') or not sys.stdin.isatty():
-            return
-
         self.console.print()  # Add a blank line for spacing
-
-        if auth.is_logged_in():
-            should_submit = Confirm.ask(
-                "[bold yellow]Would you like to sync your progress with the TinyTorch website?[/bold yellow]",
-                default=True
-            )
-            if should_submit:
-                handler = SubmissionHandler(self.config, self.console)
-                total_modules = len(get_module_mapping())
-                handler.sync_progress(total_modules=total_modules)
-        else:
-            self.console.print("[dim]💡 Run 'tito login' to enable automatic progress syncing![/dim]")
+        auto_sync_after_completion(
+            self.config,
+            self.console,
+            total_modules=len(get_module_mapping()),
+        )
 
 
     def run_module_tests(self, module_name: str, verbose: bool = True) -> int:
         """
         Run comprehensive tests for a module:
         1. Inline unit tests (from src/XX_modulename/XX_modulename.py)
-        2. Progressive integration tests (from tests/XX_modulename/test_progressive_integration.py)
+        2. Progressive integration tests (from tests/XX_modulename/test_XX_modulename_progressive.py)
         """
         from rich.table import Table
         from rich import box
@@ -985,13 +1150,30 @@ class ModuleWorkflowCommand(BaseCommand):
         """Run progressive integration tests using pytest."""
         project_root = Path.cwd()
 
-        # Find integration test file
-        integration_test_file = project_root / "tests" / module_name / "test_progressive_integration.py"
+        # Find integration test file(s). Most modules are named
+        # tests/<module>/test_<module>_progressive.py (e.g. test_01_tensor_progressive.py),
+        # so match that first and fall back to any test_*_progressive.py in the dir.
+        # Some modules (e.g. 15_quantization, 16_compression, 17_acceleration,
+        # 19_benchmarking, 20_capstone) instead use test_<topic>_core.py /
+        # test_<topic>_integration.py naming with no "_progressive" in the name at
+        # all, so if neither of the above match anything, fall back further to
+        # every test_*.py file in the module's test directory.
+        module_test_dir = project_root / "tests" / module_name
+        integration_test_targets = []
+        primary_test_file = module_test_dir / f"test_{module_name}_progressive.py"
+        if primary_test_file.exists():
+            integration_test_targets = [primary_test_file]
+        elif module_test_dir.exists():
+            matches = sorted(module_test_dir.glob("test_*_progressive.py"))
+            if matches:
+                integration_test_targets = matches
+            else:
+                integration_test_targets = sorted(module_test_dir.glob("test_*.py"))
 
-        if not integration_test_file.exists():
+        if not integration_test_targets:
             # No integration tests for this module yet
             if verbose:
-                self.console.print(f"   [dim yellow]No integration tests found: {integration_test_file}[/dim yellow]")
+                self.console.print(f"   [dim yellow]No integration tests found: {primary_test_file}[/dim yellow]")
             return {'passed': 0, 'failed': 0, 'tests': [], 'returncode': 0}
 
         # Run pytest with verbose output
@@ -1000,7 +1182,7 @@ class ModuleWorkflowCommand(BaseCommand):
                 sys.executable,
                 "-m",
                 "pytest",
-                str(integration_test_file),
+                *[str(f) for f in integration_test_targets],
                 "-v",
                 "--tb=short",
                 "-o",
@@ -1015,6 +1197,33 @@ class ModuleWorkflowCommand(BaseCommand):
 
         # Parse pytest output
         tests_run = self._parse_pytest_output(result.stdout, result.stderr)
+
+        if not tests_run and result.returncode != 0:
+            # pytest itself errored (e.g. a collection-time import failure in
+            # the exported package) rather than legitimately having zero
+            # tests. Surface this as a failure instead of silently reporting
+            # "no integration tests for this module" -- except for two cases
+            # that are not real collection failures:
+            #   - exit code 5: pytest's own "no tests collected" signal
+            #   - exit code 4: a pytest.UsageError, which conftest.py raises
+            #     from _validate_package_exported() when core modules that
+            #     come *later* in the build order haven't been exported yet.
+            #     That check is unconditional (it requires every core file to
+            #     exist, not just the one under test), so it legitimately
+            #     trips for early modules during a progressive build.
+            error_msg = (result.stderr or result.stdout).strip()
+            is_no_tests_collected = result.returncode == 5
+            is_progressive_export_gate = (
+                result.returncode == 4
+                and "TINYTORCH PACKAGE NOT EXPORTED" in error_msg
+            )
+            if not is_no_tests_collected and not is_progressive_export_gate:
+                concise_error = '\n'.join(error_msg.split('\n')[:5]) if error_msg else "pytest exited with an error"
+                tests_run = [{
+                    'name': 'pytest_collection',
+                    'passed': False,
+                    'error': concise_error,
+                }]
 
         if verbose:
             for test in tests_run:
@@ -1158,6 +1367,52 @@ class ModuleWorkflowCommand(BaseCommand):
 
         return "Test failed (see output for details)"
 
+    def _check_notebook_syntax(self, module_name: str) -> dict:
+        """Compile each code cell of the student notebook to catch syntax errors
+        before export. Unit tests run against the instructor ``src/`` file, while
+        export runs nbdev on the student notebook, so a SyntaxError in the
+        notebook would otherwise slip silently into a broken package.
+
+        Returns ``{'ok': bool, 'error': Optional[str]}``. A missing notebook is
+        not an error; some flows have nothing to check yet.
+        """
+        import json
+
+        short_name = module_name.split("_", 1)[1] if "_" in module_name else module_name
+        notebook_path = self.config.project_root / "modules" / module_name / f"{short_name}.ipynb"
+        if not notebook_path.exists():
+            return {'ok': True, 'error': None}
+        try:
+            nb = json.loads(notebook_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            return {'ok': False, 'error': f"Could not read {notebook_path.name}: {e}"}
+
+        for idx, cell in enumerate(nb.get("cells", [])):
+            if cell.get("cell_type") != "code":
+                continue
+            source = cell.get("source", "")
+            if isinstance(source, list):
+                source = "".join(source)
+            # Drop IPython magics and shell escapes, which are not valid Python
+            # and would otherwise raise a spurious SyntaxError.
+            code = "\n".join(
+                ln for ln in source.splitlines()
+                if not ln.lstrip().startswith(("%", "!"))
+            )
+            if not code.strip():
+                continue
+            try:
+                compile(code, f"{notebook_path.name}[cell {idx}]", "exec")
+            except SyntaxError as e:
+                return {
+                    'ok': False,
+                    'error': (
+                        f"SyntaxError in {notebook_path.name} cell {idx}"
+                        f" (line {e.lineno}): {e.msg}"
+                    ),
+                }
+        return {'ok': True, 'error': None}
+
     def export_module(self, module_name: str) -> int:
         """Export student's notebook to the TinyTorch package.
         
@@ -1236,7 +1491,7 @@ class ModuleWorkflowCommand(BaseCommand):
         try:
             import json
             if progress_file.exists():
-                with open(progress_file, 'r') as f:
+                with open(progress_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
         except Exception:
             pass
@@ -1260,7 +1515,7 @@ class ModuleWorkflowCommand(BaseCommand):
             from datetime import datetime
             progress['last_updated'] = datetime.now().isoformat()
 
-            with open(progress_file, 'w') as f:
+            with open(progress_file, 'w', encoding='utf-8') as f:
                 json.dump(progress, f, indent=2)
         except Exception as e:
             self.console.print(f"[yellow]⚠️  Could not save progress: {e}[/yellow]")
@@ -1592,7 +1847,7 @@ class ModuleWorkflowCommand(BaseCommand):
         completed_milestones = []
         if milestones_file.exists():
             try:
-                with open(milestones_file, 'r') as f:
+                with open(milestones_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     completed_milestones = data.get("completed_milestones", [])
             except Exception:
@@ -1714,7 +1969,7 @@ class ModuleWorkflowCommand(BaseCommand):
             milestones_file.parent.mkdir(parents=True, exist_ok=True)
             if milestones_file.exists():
                 try:
-                    with open(milestones_file, 'r') as f:
+                    with open(milestones_file, 'r', encoding='utf-8') as f:
                         milestone_progress = json.load(f)
                 except Exception:
                     milestone_progress = {}
@@ -1744,7 +1999,7 @@ class ModuleWorkflowCommand(BaseCommand):
             milestone_progress["total_unlocked"] = len(unlocked)
             milestone_progress.setdefault("achievements", [])
 
-            with open(milestones_file, 'w') as f:
+            with open(milestones_file, 'w', encoding='utf-8') as f:
                 json.dump(milestone_progress, f, indent=2)
 
             for milestone_id, milestone in newly_unlocked:

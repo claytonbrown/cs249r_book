@@ -15,6 +15,7 @@ from mlsysim.core.units import (
     Kparam,
     L,
     MB,
+    MiB,
     Mparam,
     MJ,
     MS,
@@ -200,7 +201,7 @@ def test_storage_training_corpus_anchor():
     assert corpus.TokenizedText.to(TB).magnitude == pytest.approx(6.0)
     assert corpus.TrainingWindow.to(day).magnitude == pytest.approx(30.0)
     assert corpus.CheckpointInterval.to(minute).magnitude == pytest.approx(10.0)
-    assert corpus.CheckpointBytesPerParameter.to(byte / param).magnitude == pytest.approx(10.0)
+    assert corpus.CheckpointBytesPerParameter.to(byte / param).magnitude == pytest.approx(14.0)
     assert corpus.CompressedSource.provenance.ref
 
 
@@ -221,10 +222,10 @@ def test_serving_profile_anchors():
 
     profile = ReferenceStats.ServingProfiles
 
-    assert profile.H100VendorMemoryBudget.to(GB).magnitude == pytest.approx(80.0)
+    assert profile.H100VendorMemoryBudget.to(GiB).magnitude == pytest.approx(80.0)
     assert float(profile.PrecisionDividendTensorParallelDegree) == pytest.approx(8.0)
     assert float(profile.PrecisionDividendContextLengthTokens) == pytest.approx(4096.0)
-    assert profile.PrecisionDividendGpuMemoryBudget.to(GB).magnitude == pytest.approx(80.0)
+    assert not hasattr(profile, "PrecisionDividendGpuMemoryBudget")
     assert float(profile.PrecisionDividendBaselinePolicyBatchLimit) == pytest.approx(4.0)
     assert float(profile.PrecisionDividendOptimizedPolicyBatchLimit) == pytest.approx(32.0)
     assert float(profile.PrecisionDividendSpeculationBatchThreshold) == pytest.approx(16.0)

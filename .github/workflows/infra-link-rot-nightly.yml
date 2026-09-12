@@ -53,8 +53,8 @@ jobs:
     name: '📚 Sweep · Book'
     uses: ./.github/workflows/infra-link-check.yml
     with:
-      path_pattern: './book/quarto/contents/**/*.qmd'
-      lycheeignore_path: 'book/config/linting/.lycheeignore'
+      path_pattern: './books/**/*.qmd'
+      lycheeignore_path: 'binder/config/linting/.lycheeignore'
       max_concurrency: 12
       fail_on_broken: false
 
@@ -63,7 +63,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './kits/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -72,7 +72,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './labs/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -81,7 +81,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './mlsysim/docs/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -90,7 +90,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './slides/**/*.{qmd,md}'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './instructors/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 5
       fail_on_broken: false
 
@@ -108,7 +108,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './tinytorch/quarto/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -117,7 +117,7 @@ jobs:
     uses: ./.github/workflows/infra-link-check.yml
     with:
       path_pattern: './site/**/*.qmd'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -125,8 +125,8 @@ jobs:
     name: '🎯 Sweep · StaffML'
     uses: ./.github/workflows/infra-link-check.yml
     with:
-      path_pattern: './interviews/**/*.{md,mdx,qmd}'
-      lycheeignore_path: 'shared/config/.lycheeignore'
+      path_pattern: './staffml/**/*.{md,mdx,qmd}'
+      lycheeignore_path: 'shared/config/.lycheeignore-nightly'
       max_concurrency: 8
       fail_on_broken: false
 
@@ -321,7 +321,7 @@ jobs:
             echo "## Triage notes"
             echo ""
             echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "- To intentionally suppress a URL pattern: add it to \`shared/config/.lycheeignore\` (cross-site) or \`book/config/linting/.lycheeignore\` (book-only)."
+            echo "- To intentionally suppress a URL pattern: add it to \`shared/config/.lycheeignore\` (cross-site) or \`binder/config/linting/.lycheeignore\` (book-only)."
             echo "- To re-trigger now: \`gh workflow run infra-link-rot-nightly.yml\`."
             echo ""
             echo "<!-- fingerprint: $FINGERPRINT -->"

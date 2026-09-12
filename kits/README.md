@@ -113,12 +113,10 @@ This is where AI systems meet the physical world.
 <kbd>cd kits</kbd>
 
 **Build HTML site**
-<kbd>ln -sf config/_quarto-html.yml _quarto.yml</kbd>
 <kbd>quarto render</kbd>
 
 **Build PDF**
-<kbd>ln -sf config/_quarto-pdf.yml _quarto.yml</kbd>
-<kbd>quarto render --to titlepage-pdf</kbd>
+<kbd>make pdf</kbd>
 
 **Preview with live reload**
 <kbd>quarto preview</kbd>
@@ -178,9 +176,9 @@ kits/
 │   ├── raspi/               # Raspberry Pi labs
 │   └── shared/              # Shared resources (DSP, features)
 ├── assets/                  # Images, styles, scripts
-├── config/                  # Quarto configurations
-│   ├── _quarto-html.yml     # Website config
+├── config/                  # Quarto configuration for the PDF build
 │   └── _quarto-pdf.yml      # PDF config
+├── _quarto.yml              # Website config
 ├── tex/                     # LaTeX includes for PDF
 ├── filters/                 # Lua filters
 └── index.qmd                # Landing page
@@ -267,10 +265,11 @@ Thanks to these wonderful people who helped improve the hardware kits!
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/profvjreddi"><img src="https://avatars.githubusercontent.com/profvjreddi?v=4?s=80" width="80px;" alt="Vijay Janapa Reddi"/><br /><sub><b>Vijay Janapa Reddi</b></sub></a><br />🪲 🧑‍💻 🎨 ✍️ 🧪 🛠️</td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/Mjrovai"><img src="https://avatars.githubusercontent.com/Mjrovai?v=4?s=80" width="80px;" alt="Marcelo Rovai"/><br /><sub><b>Marcelo Rovai</b></sub></a><br />✍️ 🧑‍💻 🎨 tutorial</td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/farhan523"><img src="https://avatars.githubusercontent.com/u/62025759?v=4?v=4?s=80" width="80px;" alt="Farhan Asghar"/><br /><sub><b>Farhan Asghar</b></sub></a><br />🪲 🧑‍💻</td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Shashank-Tripathi-07"><img src="https://avatars.githubusercontent.com/u/178375647?v=4?v=4?s=80" width="80px;" alt="Rocky"/><br /><sub><b>Rocky</b></sub></a><br />🪲 🧑‍💻 🎨 ✍️</td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/farhan523"><img src="https://avatars.githubusercontent.com/u/62025759?v=4?v=4?s=80" width="80px;" alt="Farhan Asghar"/><br /><sub><b>Farhan Asghar</b></sub></a><br />🪲 🧑‍💻 🎨</td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/imrehg"><img src="https://avatars.githubusercontent.com/u/38863?v=4?v=4?s=80" width="80px;" alt="Gergely Imreh"/><br /><sub><b>Gergely Imreh</b></sub></a><br />🪲 ✍️</td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/salmanmkc"><img src="https://avatars.githubusercontent.com/u/32169182?v=4?v=4?s=80" width="80px;" alt="Salman Chishti"/><br /><sub><b>Salman Chishti</b></sub></a><br />🧑‍💻</td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/Pratham-ja"><img src="https://avatars.githubusercontent.com/u/114498234?v=4?v=4?s=80" width="80px;" alt="Pratham Chaudhary"/><br /><sub><b>Pratham Chaudhary</b></sub></a><br />🧑‍💻</td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Shashank-Tripathi-07"><img src="https://avatars.githubusercontent.com/u/178375647?v=4?v=4?s=80" width="80px;" alt="Rocky"/><br /><sub><b>Rocky</b></sub></a><br />🪲</td>
     </tr>
   </tbody>
 </table>

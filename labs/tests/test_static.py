@@ -241,13 +241,35 @@ class TestWheelConsistency:
 
     def test_mlsysbook_labs_wheel_contains_contract_modules(self):
         """The lab helper wheel must include the schema, UI, report, and version modules."""
-        wheel = REPO_ROOT / "wheels" / "mlsysbook_labs-0.1.0-py3-none-any.whl"
+        wheel = REPO_ROOT / "labs" / "wheels" / "mlsysbook_labs-0.1.0-py3-none-any.whl"
         assert wheel.exists(), f"Missing lab helper wheel: {wheel}"
         with zipfile.ZipFile(wheel) as zf:
             names = set(zf.namelist())
         required = {
             "mlsysbook_labs/__init__.py",
+            "mlsysbook_labs/architecture.py",
+            "mlsysbook_labs/benchmarking.py",
+            "mlsysbook_labs/capstone.py",
+            "mlsysbook_labs/data_pipeline.py",
+            "mlsysbook_labs/deployment.py",
+            "mlsysbook_labs/edge.py",
+            "mlsysbook_labs/frameworks.py",
+            "mlsysbook_labs/inference.py",
             "mlsysbook_labs/schemas.py",
+            "mlsysbook_labs/tracks.py",
+            "mlsysbook_labs/training.py",
+            "mlsysbook_labs/triad.py",
+            "mlsysbook_labs/variants.py",
+            "mlsysbook_labs/workflow.py",
+            "mlsysbook_labs/registry_refs.py",
+            "mlsysbook_labs/migration.py",
+            "mlsysbook_labs/neural_compute.py",
+            "mlsysbook_labs/ops.py",
+            "mlsysbook_labs/responsibility.py",
+            "mlsysbook_labs/roofline.py",
+            "mlsysbook_labs/serving.py",
+            "mlsysbook_labs/selection.py",
+            "mlsysbook_labs/system_design.py",
             "mlsysbook_labs/ui.py",
             "mlsysbook_labs/reports.py",
             "mlsysbook_labs/versions.py",
@@ -293,6 +315,32 @@ class TestLabCatalog:
             assert metadata.mlsysim_version, f"{path} missing mlsysim_version"
             assert metadata.updated_at, f"{path} missing updated_at"
 
+    def test_every_lab_has_track_report_surface(self):
+        from mlsysbook_labs import LAB_CATALOG
+
+        missing = []
+        for path in LAB_CATALOG:
+            source = read_source(str(LABS_ROOT / path))
+            has_baseline_panel = (
+                "legacy_migration_panel" in source
+                and "get_lab_metadata" in source
+                and "get_lab_track_variant" in source
+            )
+            has_deep_surface = (
+                "get_track_profile" in source
+                and "build_lab_report" in source
+                and ("track_context" in source or "track_selector" in source)
+            )
+            has_shared_renderer_surface = (
+                "render_system_design_lab" in source
+                and "system_design_context" in source
+                and "system_design_controls" in source
+                and "track_selector" in source
+            )
+            if not (has_baseline_panel or has_deep_surface or has_shared_renderer_surface):
+                missing.append(path)
+        assert not missing, f"Missing track/report surface: {missing}"
+
     def test_no_absolute_wheel_url(self, lab_path):
         """Labs must use relative URLs for the wheel, not absolute mlsysbook.ai URLs."""
         source = read_source(lab_path)
@@ -301,8 +349,8 @@ class TestLabCatalog:
         )
 
     def test_wheel_file_exists_on_disk(self):
-        """The wheel file referenced by labs must actually exist in wheels/.
-        If this fails, run: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl wheels/
+        """The wheel file referenced by labs must actually exist in labs/wheels/.
+        If this fails, run: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl labs/wheels/
         """
         try:
             import tomllib
@@ -313,11 +361,11 @@ class TestLabCatalog:
         with open(pyproject, "rb") as f:
             version = tomllib.load(f)["project"]["version"]
 
-        wheel_path = REPO_ROOT / "wheels" / f"mlsysim-{version}-py3-none-any.whl"
+        wheel_path = REPO_ROOT / "labs" / "wheels" / f"mlsysim-{version}-py3-none-any.whl"
         assert wheel_path.exists(), (
             f"Wheel file missing: {wheel_path}\n"
-            f"Labs reference version {version} but the wheel is not present in wheels/.\n"
-            f"Fix: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl wheels/\n"
+            f"Labs reference version {version} but the wheel is not present in labs/wheels/.\n"
+            f"Fix: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl labs/wheels/\n"
             f"This causes BadZipFile in production when micropip fetches the missing URL."
         )
 
@@ -332,7 +380,7 @@ class TestLabCatalog:
         with open(pyproject, "rb") as f:
             version = tomllib.load(f)["project"]["version"]
 
-        wheel_path = REPO_ROOT / "wheels" / f"mlsysim-{version}-py3-none-any.whl"
+        wheel_path = REPO_ROOT / "labs" / "wheels" / f"mlsysim-{version}-py3-none-any.whl"
         required = {
             "mlsysim/labs/__init__.py",
             "mlsysim/labs/state.py",
@@ -344,7 +392,7 @@ class TestLabCatalog:
         missing = sorted(required - names)
         assert not missing, (
             f"Wheel is missing browser lab toolkit files: {missing}\n"
-            f"Fix: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl wheels/"
+            f"Fix: python3 -m build --wheel mlsysim/ && cp mlsysim/dist/mlsysim-*.whl labs/wheels/"
         )
 
 
